@@ -62,7 +62,8 @@ body{background:#0a0e1a;color:#fff;font-family:'Segoe UI','PingFang TC',sans-ser
 #loading .ld-sub{font-size:11px;color:rgba(255,255,255,.4)}
 #loading.hide{opacity:0;pointer-events:none}
 /* detail panel (click a district) */
-.detail-panel{position:fixed;left:12px;top:96px;z-index:30;background:rgba(14,18,32,.95);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;backdrop-filter:blur(12px);width:224px;display:none;font-size:12px}
+.detail-panel{position:fixed;left:12px;top:96px;z-index:30;background:rgba(14,18,32,.95);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;backdrop-filter:blur(12px);width:224px;display:none;font-size:12px;max-height:calc(100vh - 330px);overflow-y:auto}
+.detail-panel.sheet-open{display:block}
 .detail-panel .dp-close{position:absolute;top:6px;right:8px;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px}
 .detail-panel .dp-close:hover{background:rgba(255,255,255,.1);color:#fff}
 .detail-panel .dp-name{font-size:15px;font-weight:700;margin-bottom:8px;color:#5bb8f0}
@@ -75,6 +76,12 @@ body{background:#0a0e1a;color:#fff;font-family:'Segoe UI','PingFang TC',sans-ser
 .dp-warm{background:rgba(255,217,61,.2);color:#ffd93d}
 .dp-cool{background:rgba(78,168,222,.2);color:#5bb8f0}
 .dp-ok{background:rgba(87,204,153,.2);color:#57cc99}
+.trend-box{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
+.trend-head{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:rgba(255,255,255,.45);margin-bottom:2px}
+.trend-head b{color:#5bb8f0;font-size:11px}
+.trend-svg{width:100%;height:54px;display:block;overflow:visible}
+.trend-foot{display:flex;justify-content:space-between;font-size:9px;color:rgba(255,255,255,.35);margin-top:1px}
+.trend-empty{font-size:10px;color:rgba(255,255,255,.32);padding:5px 0}
 .hint-bar{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:15;font-size:10px;color:rgba(255,255,255,.35);background:rgba(14,18,32,.6);padding:3px 10px;border-radius:6px;pointer-events:none;white-space:nowrap}
 /* panel toggle buttons (mobile-first trigger UI) */
 .panel-toggles{position:fixed;top:12px;right:12px;z-index:35;display:none;gap:6px}
@@ -1076,6 +1083,103 @@ document.getElementById('dpClose').addEventListener('click', () => {
   detailPanel.classList.remove('sheet-open');
 });
 
+/* ========== District trend sparkline (from timeline snapshots) ========== */
+function snapDistrictValue(snap, name, metric) {
+  if (!snap) return null;
+  let temp = null, rain = null, ltnCount = 0;
+  (snap.temp || []).forEach(([stn, v]) => { if (temp2district(stn) === name) temp = +v; });
+  (snap.rmax || []).forEach(([d, v]) => { if (normD(d) === name) rain = +v; });
+  if (rain === null) (snap.rain || []).forEach(([stn, v]) => { if (stationDistrict(stn) === name) rain = +v; });
+  (snap.lhl || []).forEach(([type, region, cnt]) => {
+    if (type === '雲對地' && districtsInRegion(region).includes(name)) ltnCount += +cnt;
+  });
+  const hums = (snap.hum || []).map(([, v]) => +v).filter(v => !isNaN(v));
+  const hum = hums.length ? Math.round(hums.reduce((a, b) => a + b, 0) / hums.length) : null;
+  let feels = null;
+  if (temp !== null && hum) {
+    const e = (hum / 100) * 6.105 * Math.exp(17.27 * temp / (237.7 + temp));
+    feels = Math.round(temp + 0.33 * e - 4.0);
+  }
+  if (metric === 'temp')      return temp;
+  if (metric === 'feels')     return feels;
+  if (metric === 'rain')      return rain;
+  if (metric === 'humidity')  return hum;
+  if (metric === 'lightning') return ltnCount || null;
+  return temp !== null ? temp : rain;
+}
+
+const TREND_META = {
+  temp:      {label:'今日溫度走勢', unit:'°',  color:'#ff9f43'},
+  feels:     {label:'今日體感走勢', unit:'°',  color:'#f87171'},
+  rain:      {label:'今日雨量走勢', unit:'mm', color:'#4ea8de'},
+  lightning: {label:'今日閃電走勢', unit:'次', color:'#a855f7'},
+  humidity:  {label:'今日濕度走勢', unit:'%',  color:'#22d3ee'},
+  thunder:   {label:'今日溫度走勢', unit:'°',  color:'#ff9f43'},
+};
+
+function buildTrend(name, m) {
+  const metric = (m === 'thunder') ? 'temp' : (TREND_META[m] ? m : 'temp');
+  const meta = TREND_META[metric];
+  const pts = [];
+  tlSnapshots.forEach(s => {
+    const v = snapDistrictValue(s, name, metric);
+    if (v !== null && v !== undefined && !isNaN(v)) pts.push({t: (s.t || '').slice(11, 16), v: +v});
+  });
+  // in live mode, extend the series to "now" so the chart ends at the current reading
+  const liveVal = snapLiveValue(name, metric);
+  if (liveVal !== null && document.getElementById('tlLive').classList.contains('active')) {
+    const lastT = pts.length ? pts[pts.length - 1].t : null;
+    const nowT = new Date().toLocaleTimeString('zh-HK', {hour:'2-digit', minute:'2-digit', hour12:false});
+    if (lastT !== nowT) pts.push({t: '現在', v: liveVal});
+  }
+  if (pts.length < 2) {
+    return `<div class="trend-box"><div class="trend-head"><span>${meta.label}</span></div>
+      <div class="trend-empty">資料不足（今日只有 ${pts.length} 個數據點）</div></div>`;
+  }
+  const W = Math.max(150, (detailPanel.clientWidth || 224) - 28), H = 54, PAD = 7;
+  const vals = pts.map(p => p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const flat = (hi - lo) < 1e-9;                 // a flat series would otherwise sit on the floor
+  const sp = flat ? 1 : (hi - lo);
+  const x = i => PAD + i * (W - PAD * 2) / (pts.length - 1);
+  const y = v => flat ? (H / 2) : (H - PAD - ((v - lo) / sp) * (H - PAD * 2));
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(pts.length - 1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+  const first = pts[0], last = pts[pts.length - 1];
+  const delta = last.v - first.v;
+  const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '');
+  const dcol = delta > 0 ? '#f87171' : (delta < 0 ? '#5bb8f0' : 'rgba(255,255,255,.4)');
+  const dl = Math.abs(delta);
+  const deltaTxt = delta === 0 ? '' : `${arrow}${dl % 1 ? dl.toFixed(1) : dl}`;
+  const uid = 'g' + Math.random().toString(36).slice(2, 7);
+  const rangeTxt = flat ? `全程 ${hi}${meta.unit}` : `高 ${hi} / 低 ${lo}${meta.unit}`;
+  return `<div class="trend-box">
+    <div class="trend-head"><span>${meta.label}</span><b>${last.v}${meta.unit} <span style="color:${dcol}">${deltaTxt}</span></b></div>
+    <svg class="trend-svg" viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}">
+      <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${meta.color}" stop-opacity="0.4"/>
+        <stop offset="100%" stop-color="${meta.color}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#${uid})"/>
+      <path d="${line}" fill="none" stroke="${meta.color}" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(pts.length - 1).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="2.6" fill="${meta.color}"/>
+      <circle cx="${x(0).toFixed(1)}" cy="${y(first.v).toFixed(1)}" r="2" fill="${meta.color}" opacity="0.55"/>
+    </svg>
+    <div class="trend-foot"><span>${first.t}</span><span>${rangeTxt}</span><span>${last.t}</span></div>
+  </div>`;
+}
+
+/* current (live) value for the same metric, for the trend's last point */
+function snapLiveValue(name, metric) {
+  const d = liveData[name] || {};
+  if (metric === 'temp')      return d.temp !== undefined ? d.temp : null;
+  if (metric === 'feels')     return d.feels !== undefined ? d.feels : null;
+  if (metric === 'rain')      return d.rain !== undefined ? d.rain : null;
+  if (metric === 'humidity')  return d.hum !== undefined ? d.hum : (infoCache.hum || null);
+  if (metric === 'lightning') return d.lhl ? d.lhl : null;
+  return null;
+}
+
 function showDetail(name) {
   currentDetail = name;
   const data = liveData[name] || {};
@@ -1092,11 +1196,12 @@ function showDetail(name) {
   const c = infoCache || {};
   if (mode === 'temp' && c.maxTemp !== null) rows.push(['📊 全港對比', `最高 ${c.maxTemp}° / 最低 ${c.minTemp}°`]);
   document.getElementById('dpName').textContent = '📍 ' + name;
-  document.getElementById('dpBody').innerHTML = rows
-    .map(([k, v]) => `<div class="dp-row"><span class="dp-k">${k}</span><span class="dp-v">${v}</span></div>`)
-    .join('');
+  // open the panel first so the trend can measure its real width
   closeAllSheets('detailPanel');
   detailPanel.classList.add('sheet-open');
+  document.getElementById('dpBody').innerHTML = rows
+    .map(([k, v]) => `<div class="dp-row"><span class="dp-k">${k}</span><span class="dp-v">${v}</span></div>`)
+    .join('') + buildTrend(name, mode);
 }
 
 /* ========== District hover tooltip + click ========== */
