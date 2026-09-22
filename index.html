@@ -854,7 +854,13 @@ function renderSun() {
   set('ibDaylen', c.daylen || '—');
 }
 refresh();
-setInterval(refresh, 60000);
+setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+/* a hidden tab must not keep polling (each timeline poll = one R2 read burst) */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refresh();
+  if (typeof loadTimeline === 'function') loadTimeline();
+});
 
 /* ========== Timeline playback ========== */
 const tlSlider = document.getElementById('tlSlider');
@@ -918,7 +924,7 @@ async function loadTimeline() {
   } catch(e) { console.warn('timeline fail', e); }
 }
 loadTimeline();
-setInterval(loadTimeline, 300000);
+setInterval(() => { if (!document.hidden) loadTimeline(); }, 300000);
 
 function applySnapshot(idx) {
   if (idx < 0 || idx >= tlSnapshots.length) return;
