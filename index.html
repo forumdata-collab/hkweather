@@ -82,6 +82,8 @@ body{background:#0a0e1a;color:#fff;font-family:'Segoe UI','PingFang TC',sans-ser
 .tg-btn.active{border-color:#4ea8de;background:rgba(78,168,222,.25)}
 .tg-btn .tg-badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;line-height:1.3}
 .sheet-close{display:none;position:absolute;top:6px;right:8px;background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;width:26px;height:26px;font-size:14px;cursor:pointer}
+.toast{position:fixed;left:50%;bottom:104px;transform:translateX(-50%) translateY(12px);z-index:60;background:rgba(20,26,44,.96);border:1px solid rgba(78,168,222,.45);color:#fff;font-size:12px;padding:8px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;max-width:min(88vw,420px);text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media (max-width:860px){
   /* mobile: panels become bottom sheets, opened by the toggle buttons */
   .panel-toggles{display:flex}
@@ -854,6 +856,46 @@ const tlCount = document.getElementById('tlCount');
 const tlPlay = document.getElementById('tlPlay');
 const tlLiveBtn = document.getElementById('tlLive');
 let tlSnapshots = [], tlIdx = -1, tlPlaying = false, tlTimer = null;
+let tlPlaySeq = [];          // indices that actually carry data for the active layer
+
+/* does this snapshot carry data for the given layer? */
+function snapHasData(snap, m) {
+  if (!snap) return false;
+  if (m === 'temp' || m === 'feels') return !!(snap.temp && snap.temp.length);
+  if (m === 'humidity') return !!(snap.hum && snap.hum.length);
+  if (m === 'rain') return !!((snap.rmax && snap.rmax.length) || (snap.rain && snap.rain.length));
+  if (m === 'lightning') return !!((snap.ltn && snap.ltn.length) || (snap.lhl && snap.lhl.length));
+  return true;   // thunder composite accepts any snapshot
+}
+function playableIndices(m) {
+  return tlSnapshots.map((s, i) => i).filter(i => snapHasData(tlSnapshots[i], m));
+}
+/* keep the counter in sync with the active layer's real coverage */
+function updateTlCount() {
+  const total = tlSnapshots.length;
+  if (!total) return;
+  const avail = playableIndices(mode).length;
+  const full = tlSnapshots.filter(s => s.temp && s.temp.length).length;
+  if (avail === total) {
+    tlCount.textContent = `${total} 個快照`;
+  } else {
+    tlCount.textContent = `${total} 個快照（此圖層 ${avail} 個可播）`;
+  }
+  tlCount.title = `共 ${total} 個快照，其中 ${full} 個含溫度數據`;
+}
+function showToast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2600);
+}
 
 function todayHK() { return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
 
@@ -865,10 +907,7 @@ async function loadTimeline() {
     if (!data.snaps?.length) return;
     tlSnapshots = data.snaps;
     tlSlider.max = tlSnapshots.length - 1;
-    const full = tlSnapshots.filter(s => s.temp && s.temp.length).length;
-    tlCount.textContent = full === tlSnapshots.length
-      ? `${tlSnapshots.length} 個快照`
-      : `${tlSnapshots.length} 個快照（${full} 個含溫度）`;
+    updateTlCount();
   } catch(e) { console.warn('timeline fail', e); }
 }
 loadTimeline();
@@ -897,16 +936,28 @@ tlSlider.addEventListener('input', () => {
 tlPlay.addEventListener('click', () => {
   if (tlPlaying) {
     tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶';
-  } else {
-    if (tlIdx < 0) applySnapshot(0);
-    tlPlaying = true;
-    tlLiveBtn.classList.remove('active');
-    tlPlay.textContent = '⏸';
-    tlTimer = setInterval(() => {
-      if (tlIdx < tlSnapshots.length - 1) applySnapshot(tlIdx + 1);
-      else { tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶'; }
-    }, 800);
+    return;
   }
+  const seq = playableIndices(mode);
+  if (seq.length < 2) {
+    showToast('此圖層暫無足夠歷史快照可播放（舊快照未包含該數據）');
+    return;
+  }
+  tlPlaySeq = seq;
+  let pos = seq.indexOf(tlIdx);
+  if (pos < 0) pos = 0;
+  applySnapshot(seq[pos]);
+  tlPlaying = true;
+  tlLiveBtn.classList.remove('active');
+  tlPlay.textContent = '⏸';
+  if (seq.length < tlSnapshots.length) {
+    showToast(`回放 ${seq.length} 個含「${(LAYER_LEGEND[mode]||{}).title || mode}」數據嘅快照`);
+  }
+  tlTimer = setInterval(() => {
+    pos++;
+    if (pos < tlPlaySeq.length) applySnapshot(tlPlaySeq[pos]);
+    else { tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶'; }
+  }, 800);
 });
 tlLiveBtn.addEventListener('click', () => {
   tlLiveBtn.classList.add('active');
@@ -964,6 +1015,14 @@ document.querySelectorAll('.layer-item').forEach(item => {
     mode = item.dataset.mode;
     applyLegend(mode);
     applyColors();
+    updateTlCount();
+    // if a playback is running, restart it along this layer's own sequence
+    if (tlPlaying) {
+      clearInterval(tlTimer);
+      tlPlaying = false;
+      tlPlay.textContent = '▶';
+      tlPlay.click();
+    }
   });
 });
 
