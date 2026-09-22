@@ -7,6 +7,8 @@ import json, os, sys, time, boto3, urllib.request
 from datetime import datetime, timedelta
 
 HKO = "https://data.weather.gov.hk/weatherAPI/opendata"
+RETENTION_DAYS = 7          # snapshots older than this date prefix are purged
+QUIET = "--quiet" in sys.argv
 
 def fetch_json(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -63,10 +65,11 @@ def main():
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"])
     key = f"snapshots/{now.strftime('%Y-%m-%d')}/{now.strftime('%H-%M')}.json"
     s3.put_object(Bucket="wx-thunder", Key=key, Body=body, ContentType="application/json")
-    print(f"OK {key} {len(body)}B")
+    if not QUIET:
+        print(f"OK {key} {len(body)}B")
 
-    # retention: delete prefixes older than 7 days
-    cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    # retention: delete date prefixes older than RETENTION_DAYS
+    cutoff = (now - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d")
     for prefix in _list_prefixes(s3):
         if prefix < cutoff:
             _delete_prefix(s3, prefix)
@@ -89,4 +92,9 @@ def _delete_prefix(s3, prefix):
         marker = keys[-1] if keys else None
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # non-zero exit so the cron wrapper's `|| echo FAIL` actually fires
+        print(f"wx-thunder snapshot FAILED: {e}", file=sys.stderr)
+        sys.exit(1)
