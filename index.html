@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>香港天氣地圖 3D · HK Weather Map</title>
+<script src="https://unpkg.com/cesium@1.119/Build/Cesium/Cesium.js"></script>
+<link href="https://unpkg.com/cesium@1.119/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e1a;color:#fff;font-family:'Segoe UI','PingFang TC',sans-serif;overflow:hidden;width:100vw;height:100vh}
+#cesium{width:100%;height:100%}
+.cesium-viewer-bottom{display:none !important}
+.hud{position:fixed;top:12px;left:12px;z-index:20;background:rgba(14,18,32,.85);border-radius:10px;padding:10px 14px;backdrop-filter:blur(8px);pointer-events:none}
+.hud h1{font-size:16px;margin-bottom:3px}
+.hud p{font-size:11px;color:rgba(255,255,255,.6)}
+.warn-bar{position:fixed;top:0;left:0;right:0;z-index:30;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#000;text-align:center;padding:6px 16px;font-size:13px;font-weight:700;display:none}
+.legend{position:fixed;bottom:64px;left:12px;z-index:20;background:rgba(14,18,32,.88);border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px);pointer-events:none}
+.legend h3{font-size:10px;color:rgba(255,255,255,.5);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
+.leg-row{display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0}
+.leg-dot{width:10px;height:10px;border-radius:2px}
+.leg-note{font-size:9px;color:rgba(255,255,255,.38);margin-top:5px;padding-top:4px;border-top:1px solid rgba(255,255,255,.08);line-height:1.4;max-width:170px}
+.controls{display:none}
+/* Windy-style layer menu (right side) */
+.layer-menu{position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:25;background:rgba(14,18,32,.9);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:6px;backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:2px}
+.layer-item{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:9px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.7);border:none;background:transparent;width:100%;text-align:left;transition:.15s;white-space:nowrap}
+.layer-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.layer-item.active{background:rgba(78,168,222,.22);color:#5bb8f0}
+.layer-item .li-icon{font-size:15px;width:18px;text-align:center}
+.layer-item .li-sub{font-size:9px;color:rgba(255,255,255,.4);margin-left:auto}
+.layer-menu .lm-title{font-size:9px;color:rgba(255,255,255,.35);padding:4px 12px 6px;text-transform:uppercase;letter-spacing:1px}
+.timeline{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(14,18,32,.88);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 12px;backdrop-filter:blur(10px);display:flex;align-items:center;gap:8px;min-width:min(520px,calc(100vw - 130px))}
+.timeline input[type=range]{flex:1;accent-color:#4ea8de;height:4px;cursor:pointer}
+.timeline .tl-time{font-size:11px;color:rgba(255,255,255,.8);min-width:108px;text-align:center;font-variant-numeric:tabular-nums}
+.timeline .tl-count{font-size:10px;color:rgba(255,255,255,.45);min-width:64px}
+.timeline .tl-play{background:#4ea8de;border:none;color:#fff;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:12px;display:grid;place-items:center}
+.timeline .tl-live{background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:10px}
+.timeline .tl-live.active{border-color:#57cc99;color:#57cc99}
+.credit{position:fixed;top:52px;left:12px;z-index:10;font-size:9px;color:rgba(255,255,255,.4);background:rgba(14,18,32,.6);padding:3px 8px;border-radius:6px;pointer-events:none}
+.info-bar{position:fixed;top:12px;right:12px;z-index:20;background:rgba(14,18,32,.85);border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px);max-width:300px;font-size:11px;pointer-events:none}
+.info-bar .ib-row{display:flex;justify-content:space-between;gap:10px;margin:2px 0}
+.info-bar .ib-label{color:rgba(255,255,255,.5)}
+.info-bar .ib-val{font-weight:600}
+.info-bar .ib-title{font-size:10px;color:rgba(255,255,255,.4);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
+.info-bar .ib-note{font-size:9px;color:#ffd93d;margin-top:5px;padding-top:4px;border-top:1px solid rgba(255,255,255,.08);line-height:1.4}
+.tooltip3d{position:fixed;z-index:40;background:rgba(14,18,32,.95);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 14px;pointer-events:none;display:none;backdrop-filter:blur(10px);font-size:12px;max-width:220px}
+.tooltip3d .tt-name{font-weight:700;font-size:13px;margin-bottom:4px}
+.tooltip3d .tt-row{display:flex;justify-content:space-between;gap:12px;margin:2px 0}
+.tooltip3d .tt-label{color:rgba(255,255,255,.5)}
+.tooltip3d .tt-val{font-weight:600}
+.forecast-bar{position:fixed;bottom:64px;right:12px;z-index:20;background:rgba(14,18,32,.88);border-radius:10px;padding:8px 12px;backdrop-filter:blur(8px);max-width:320px;font-size:11px;display:none}
+.forecast-bar.has-data{display:block}
+.forecast-bar .fb-title{font-size:10px;color:rgba(255,255,255,.4);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
+.forecast-bar .fb-line{font-size:11px;color:rgba(255,255,255,.8);line-height:1.6}
+.forecast-bar .fb-label{color:rgba(255,255,255,.5)}
+.swt-bar{position:fixed;top:56px;right:12px;z-index:25;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:6px 10px;font-size:11px;color:#ffd93d;backdrop-filter:blur(8px);display:none;max-width:340px}
+/* loading overlay */
+#loading{position:fixed;inset:0;z-index:100;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .6s}
+#loading .ld-ring{width:46px;height:46px;border:3px solid rgba(78,168,222,.2);border-top-color:#4ea8de;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading .ld-txt{font-size:13px;color:rgba(255,255,255,.7)}
+#loading .ld-sub{font-size:11px;color:rgba(255,255,255,.4)}
+#loading.hide{opacity:0;pointer-events:none}
+/* detail panel (click a district) */
+.detail-panel{position:fixed;left:12px;top:96px;z-index:30;background:rgba(14,18,32,.95);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;backdrop-filter:blur(12px);width:224px;display:none;font-size:12px}
+.detail-panel .dp-close{position:absolute;top:6px;right:8px;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px}
+.detail-panel .dp-close:hover{background:rgba(255,255,255,.1);color:#fff}
+.detail-panel .dp-name{font-size:15px;font-weight:700;margin-bottom:8px;color:#5bb8f0}
+.detail-panel .dp-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.detail-panel .dp-row:last-child{border-bottom:none}
+.detail-panel .dp-k{color:rgba(255,255,255,.5)}
+.detail-panel .dp-v{font-weight:600;font-variant-numeric:tabular-nums}
+.detail-panel .dp-badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:4px;margin-left:5px;vertical-align:middle}
+.dp-hot{background:rgba(239,68,68,.25);color:#f87171}
+.dp-warm{background:rgba(255,217,61,.2);color:#ffd93d}
+.dp-cool{background:rgba(78,168,222,.2);color:#5bb8f0}
+.dp-ok{background:rgba(87,204,153,.2);color:#57cc99}
+.hint-bar{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:15;font-size:10px;color:rgba(255,255,255,.35);background:rgba(14,18,32,.6);padding:3px 10px;border-radius:6px;pointer-events:none;white-space:nowrap}
+/* panel toggle buttons (mobile-first trigger UI) */
+.panel-toggles{position:fixed;top:12px;right:12px;z-index:35;display:none;gap:6px}
+.tg-btn{width:40px;height:40px;border-radius:11px;background:rgba(14,18,32,.9);border:1px solid rgba(255,255,255,.14);color:#fff;font-size:17px;cursor:pointer;backdrop-filter:blur(10px);display:grid;place-items:center;position:relative}
+.tg-btn.active{border-color:#4ea8de;background:rgba(78,168,222,.25)}
+.tg-btn .tg-badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;line-height:1.3}
+.sheet-close{display:none;position:absolute;top:6px;right:8px;background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;width:26px;height:26px;font-size:14px;cursor:pointer}
+@media (max-width:860px){
+  /* mobile: panels become bottom sheets, opened by the toggle buttons */
+  .panel-toggles{display:flex}
+  .info-bar,.forecast-bar,.legend,.detail-panel{
+    position:fixed;left:8px;right:8px;top:auto;bottom:64px;width:auto;max-width:none;
+    max-height:52vh;overflow-y:auto;z-index:50;display:none;
+    border-radius:14px;padding:12px 14px;font-size:12px;
+    box-shadow:0 -6px 30px rgba(0,0,0,.5)
+  }
+  /* on mobile, even a data-filled forecast panel waits for the 🔭 trigger */
+  .forecast-bar.has-data{display:none}
+  .info-bar.sheet-open,
+  .legend.sheet-open,
+  .detail-panel.sheet-open,
+  .forecast-bar.has-data.sheet-open{display:block}
+  .info-bar .ib-row,.forecast-bar .fb-line,.legend .leg-row{font-size:12px;margin:4px 0}
+  .info-bar .ib-note,.legend .leg-note{font-size:10px}
+  .sheet-close{display:grid;place-items:center}
+  .layer-menu{right:6px;padding:4px;transform:translateY(-50%) scale(.92);transform-origin:right center}
+  .layer-item{padding:9px 10px;gap:0}
+  .layer-item span:not(.li-icon):not(.li-sub){display:none}
+  .layer-item .li-sub{display:none}
+  .timeline{min-width:calc(100vw - 88px);padding:5px 8px;gap:5px;bottom:8px}
+  .timeline .tl-time,.timeline .tl-count{display:none}
+  .timeline .tl-live{padding:5px 9px;font-size:11px}
+  .timeline .tl-play{width:30px;height:30px}
+  .hud h1{font-size:14px}
+  .hud p{font-size:10px}
+  .credit{display:none}
+  .hint-bar{display:none}
+  .swt-bar{left:8px;right:8px;max-width:none;top:52px}
+  .tooltip3d{display:none !important}
+  /* when a warning banner is showing, drop the header controls below it */
+  body.has-warn .panel-toggles{top:42px}
+  body.has-warn .hud{top:42px}
+  body.has-warn .swt-bar{top:88px}
+}
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="ld-ring"></div>
+  <div class="ld-txt">載入香港 3D 地圖…</div>
+  <div class="ld-sub" id="ldSub">連接天文台即時數據</div>
+</div>
+<div id="cesium"></div>
+<div class="warn-bar" id="warnBar"></div>
+<div class="hud"><h1>🌤️ 香港天氣地圖</h1><p id="hudTime">載入中...</p></div>
+<div class="hint-bar">💡 拖曳旋轉 · 滾輪縮放 · 點擊區域看詳情 · 鍵盤 1-5 切圖層 · D 日夜 · L 標籤</div>
+<div class="detail-panel" id="detailPanel">
+  <button class="dp-close" id="dpClose">✕</button>
+  <div class="dp-name" id="dpName">—</div>
+  <div id="dpBody"></div>
+</div>
+<div class="credit">3D地圖 © 地政總署 CSDI · 天氣 © 香港天文台</div>
+<div class="panel-toggles" id="panelToggles">
+  <button class="tg-btn" id="tgInfo" aria-label="全港概況">📊</button>
+  <button class="tg-btn" id="tgForecast" aria-label="天氣預報">🔭<span class="tg-badge" id="tgForecastBadge" style="display:none">!</span></button>
+  <button class="tg-btn" id="tgLegend" aria-label="圖例">📋</button>
+</div>
+<div class="info-bar" id="infoBar">
+  <button class="sheet-close" data-close="infoBar">✕</button>
+  <div class="ib-title">📊 全港概況</div>
+  <div class="ib-row"><span class="ib-label">最高溫</span><span class="ib-val" id="ibMaxTemp">—</span></div>
+  <div class="ib-row"><span class="ib-label">最低溫</span><span class="ib-val" id="ibMinTemp">—</span></div>
+  <div class="ib-row"><span class="ib-label">平均濕度</span><span class="ib-val" id="ibHum">—</span></div>
+  <div class="ib-row"><span class="ib-label">海面水溫</span><span class="ib-val" id="ibSea">—</span></div>
+  <div class="ib-row"><span class="ib-label">土壤溫度</span><span class="ib-val" id="ibSoil">—</span></div>
+  <div class="ib-row"><span class="ib-label">雨量最多區</span><span class="ib-val" id="ibRain">—</span></div>
+  <div class="ib-row" style="border-top:1px solid rgba(255,255,255,.08);margin-top:4px;padding-top:4px"><span class="ib-label">🌅 日出</span><span class="ib-val" id="ibSunrise">—</span></div>
+  <div class="ib-row"><span class="ib-label">🌇 日落</span><span class="ib-val" id="ibSunset">—</span></div>
+  <div class="ib-row"><span class="ib-label">☀️ 日照</span><span class="ib-val" id="ibDaylen">—</span></div>
+  <div class="ib-note" id="ibNote" style="display:none"></div>
+</div>
+<div class="tooltip3d" id="tooltip3d"><div class="tt-name" id="tt3dName"></div><div id="tt3dContent"></div></div>
+<div class="swt-bar" id="swtBar"></div>
+<div class="forecast-bar" id="forecastBar">
+  <button class="sheet-close" data-close="forecastBar">✕</button>
+  <div class="fb-title">🔭 天氣預報</div>
+  <div class="fb-line" id="fbPeriod">—</div>
+  <div class="fb-line" id="fbDesc">—</div>
+  <div class="fb-line" id="fbOutlook" style="color:rgba(255,255,255,.6)">—</div>
+</div>
+<div class="legend" id="legendBox">
+  <button class="sheet-close" data-close="legendBox">✕</button>
+  <h3 id="legTitle">雨量分級</h3>
+  <div id="legRain">
+    <div class="leg-row"><div class="leg-dot" style="background:rgba(30,58,95,.7)"></div><span>正常</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#4ea8de"></div><span>小雨 &lt;2.5mm</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#57cc99"></div><span>中雨 2.5–7.5mm</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffd93d"></div><span>大雨 7.5–50mm</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ef4444"></div><span>暴雨 &gt;50mm</span></div>
+  </div>
+  <div id="legTemp" style="display:none">
+    <div class="leg-row"><div class="leg-dot" style="background:#3b82f6"></div><span>&lt;24°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#4ea8de"></div><span>24–26°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#fd7e3a"></div><span>26–28°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffa050"></div><span>28–30°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffd93d"></div><span>30–32°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ef4444"></div><span>&gt;32°C</span></div>
+  </div>
+  <div id="legFeels" style="display:none">
+    <div class="leg-row"><div class="leg-dot" style="background:#4ea8de"></div><span>&lt;27°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#fd7e3a"></div><span>27–30°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffa050"></div><span>30–33°C</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ffd93d"></div><span>33–36°C 悶熱</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#ef4444"></div><span>36–40°C 酷熱</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#dc2626"></div><span>&gt;40°C 極酷熱</span></div>
+    <div class="leg-note">🌡 由分區溫度＋全港濕度計算（澳洲 BOM 體感公式）</div>
+  </div>
+  <div id="legHum" style="display:none">
+    <div class="leg-row"><div class="leg-dot" style="background:#fbbf24"></div><span>&lt;60% 乾燥</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#84cc16"></div><span>60–70% 舒適</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#22d3ee"></div><span>70–80% 潮濕</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#3b82f6"></div><span>80–90% 很潮濕</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#8b5cf6"></div><span>&gt;90% 極潮濕</span></div>
+    <div class="leg-note">⚠️ 濕度僅香港天文台單一測站，全港同值</div>
+  </div>
+  <div id="legLightning" style="display:none">
+    <div class="leg-row"><div class="leg-dot" style="background:#ffd93d"></div><span>區內有閃電</span></div>
+    <div class="leg-row"><div class="leg-dot" style="background:#a855f7"></div><span>錄得雲對地閃電</span></div>
+  </div>
+  <div class="leg-note" id="legScaleNote">📏 固定絕對刻度 · 可跨時間比較</div>
+</div>
+<div class="layer-menu" id="layerMenu">
+  <div class="lm-title">圖層</div>
+  <button class="layer-item active" data-mode="thunder"><span class="li-icon">⛈</span><span>雷暴綜合</span><span class="li-sub">雨+閃電</span></button>
+  <button class="layer-item" data-mode="rain"><span class="li-icon">🌧</span><span>雨量</span><span class="li-sub">mm</span></button>
+  <button class="layer-item" data-mode="temp"><span class="li-icon">🌡</span><span>溫度</span><span class="li-sub">°C</span></button>
+  <button class="layer-item" data-mode="feels"><span class="li-icon">🥵</span><span>體感溫度</span><span class="li-sub">°C</span></button>
+  <button class="layer-item" data-mode="lightning"><span class="li-icon">⚡</span><span>閃電</span><span class="li-sub">次</span></button>
+  <div class="lm-title" style="border-top:1px solid rgba(255,255,255,.08);margin-top:4px;padding-top:8px">顯示</div>
+  <button class="layer-item active" id="btnLabels"><span class="li-icon">🏷️</span><span>區名標籤</span></button>
+  <button class="layer-item" id="btnSun"><span class="li-icon">☀️</span><span>日夜日照</span></button>
+</div>
+<div class="timeline">
+  <button class="tl-play" id="tlPlay" title="播放回放">▶</button>
+  <span class="tl-time" id="tlTime">—</span>
+  <input type="range" id="tlSlider" min="0" max="0" value="0" step="1">
+  <span class="tl-count" id="tlCount">0 個快照</span>
+  <button class="tl-live active" id="tlLive">🔴 Live</button>
+</div>
+
+<script>
+window.CESIUM_BASE_URL = 'https://unpkg.com/cesium@1.119/Build/Cesium';
+</script>
+<script>
+/* ========== Cesium viewer ========== */
+const viewer = new Cesium.Viewer('cesium', {
+  baseLayerPicker: false, geocoder: false, homeButton: false,
+  sceneModePicker: false, navigationHelpButton: false, animation: false,
+  timeline: false, fullscreenButton: false, infoBox: false,
+  selectionIndicator: false, shadows: false,
+  baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+    Cesium.ArcGisMapServerImageryProvider.fromUrl('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer')
+  ),
+  terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+});
+viewer.scene.globe.enableLighting = false;
+viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0d2547');
+viewer.scene.skyAtmosphere.show = true;
+viewer.scene.fog.enabled = true;
+viewer.scene.screenSpaceCameraController.minimumZoomDistance = 200;
+viewer.scene.screenSpaceCameraController.maximumZoomDistance = 150000;
+viewer.scene.globe.depthTestAgainstTerrain = false;
+
+/* ========== CSDI 3D Hong Kong (real buildings & terrain tiles) ==========
+   Note: CSDI's coarse LOD tiles render black at regional zoom levels, so the
+   tileset is only shown when the camera is closer than TILESET_MAX_HEIGHT. */
+const TILESET_MAX_HEIGHT = 14000;
+let hkTileset = null;
+Cesium.Cesium3DTileset.fromUrl(
+  'https://data.map.gov.hk/api/3d-data/3dtiles/f2/tileset.json?key=3967f8f365694e0798af3e7678509421',
+  { maximumScreenSpaceError: 8 }
+).then(ts => {
+  hkTileset = ts;
+  ts.show = viewer.camera.positionCartographic.height < TILESET_MAX_HEIGHT;
+  viewer.scene.primitives.add(ts);
+  hideLoading();
+}).catch(e => {
+  console.warn('3D tileset load failed:', e);
+  hideLoading('3D 圖層載入失敗，仍可查看天氣數據');
+});
+setTimeout(() => hideLoading(), 12000);
+
+/* show 3D buildings only when zoomed in (avoids black coarse LOD at far zoom) */
+viewer.camera.changed.addEventListener(() => {
+  if (!hkTileset) return;
+  const h = viewer.camera.positionCartographic.height;
+  const shouldShow = h < TILESET_MAX_HEIGHT;
+  if (hkTileset.show !== shouldShow) hkTileset.show = shouldShow;
+});
+
+// Fly to HK overview
+viewer.camera.flyTo({
+  destination: Cesium.Cartesian3.fromDegrees(114.1694, 22.3193, 70000),
+  orientation: { heading: 0, pitch: -Cesium.Math.PI_OVER_TWO + 0.15, roll: 0 },
+  duration: 1.5
+});
+
+/* hide loading overlay when 3D tiles are ready (or after 12s timeout) */
+let loadingHidden = false;
+function hideLoading(msg) {
+  if (loadingHidden) return;
+  loadingHidden = true;
+  const el = document.getElementById('loading');
+  if (msg) document.getElementById('ldSub').textContent = msg;
+  setTimeout(() => {
+    el.classList.add('hide');
+    setTimeout(() => el.style.display = 'none', 700);
+  }, msg ? 300 : 0);
+}
+
+/* ========== 18-district GeoJSON overlay (weather coloring) ========== */
+let districtEntities = [];   // {name, entity, labelEntity, cx, cy}
+let labelEntities = [];
+let showLabels = true;
+let sunOn = false;
+let dist_geo_names = [];
+let mode = 'thunder';
+
+async function loadDistricts() {
+  const resp = await fetch('dist_geo.json', {cache:'no-store'});
+  const geo = await resp.json();
+  dist_geo_names = geo.districts.map(d => d.tc);
+  geo.districts.forEach(d => {
+    const positions = [];
+    d.rings.forEach(ring => {
+      ring.forEach(([lon, lat]) => positions.push(Cesium.Cartesian3.fromDegrees(lon, lat)));
+    });
+    const entity = viewer.entities.add({
+      polygon: {
+        hierarchy: positions,
+        material: Cesium.Color.fromCssColorString('rgba(30,58,95,0.5)'),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString('rgba(120,180,255,0.35)'),
+        height: 0,
+        classificationType: Cesium.ClassificationType.BOTH,
+      }
+    });
+    entity._wxName = d.tc;
+    // district label (name + temp) at centroid
+    const labelEntity = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(d.cx, d.cy, 60),
+      label: {
+        text: d.tc,
+        font: 'bold 12px "PingFang TC","Microsoft JhengHei",sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.fromCssColorString('rgba(0,0,0,0.95)'),
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new Cesium.NearFarScalar(15000, 1.0, 250000, 0.85),
+        pixelOffset: new Cesium.Cartesian2(0, 0),
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString('rgba(10,14,26,0.62)'),
+        backgroundPadding: new Cesium.Cartesian2(5, 3),
+      },
+      show: showLabels,
+    });
+    labelEntity._wxName = d.tc;
+    labelEntities.push(labelEntity);
+    districtEntities.push({name: d.tc, entity, labelEntity, cx: d.cx, cy: d.cy});
+  });
+  applyColors();
+}
+loadDistricts();
+
+/* ========== Live weather ========== */
+const liveData = {};   // district -> {rain, lightning, lhl, temp, hum}
+let WTS = null;
+let infoCache = {};    // {maxTemp, minTemp, hum, sea, soil, rainMax}
+
+const TEMP2DIST = {
+  '香港天文台':'中西區','京士柏':'油尖旺','黃竹坑':'南區','打鼓嶺':'北區',
+  '流浮山':'元朗','大埔':'大埔','沙田':'沙田','屯門':'屯門','將軍澳':'觀塘',
+  '西貢':'西貢','長洲':'離島','赤鱲角':'離島','坪洲':'離島','青衣':'葵青',
+  '石崗':'元朗','荃灣可觀':'荃灣','荃灣城門谷':'荃灣','上水':'北區','元朗公園':'元朗',
+  '大美督':'大埔','塔門':'大埔','深水埗':'深水埗','九龍城':'九龍城','黃大仙':'黃大仙',
+  '觀塘':'觀塘','油麻地':'油尖旺','旺角':'油尖旺','尖沙咀':'油尖旺','中環碼頭':'中西區',
+  '上環':'中西區','灣仔':'灣仔','鰂魚涌':'東區','北角':'東區','筲箕灣':'東區','赤柱':'南區',
+  '南朗山':'南區','香港公園':'中西區','山頂':'中西區','大老山':'沙田','昂坪':'離島',
+  '滘西洲':'西貢','北潭涌':'西貢','濕地公園':'元朗','水邊圍':'元朗','大埔墟':'大埔',
+  // 灣仔區：唯一站係跑馬地（Happy Valley）
+  '跑馬地':'灣仔','摩理臣山':'灣仔','銅鑼灣':'灣仔',
+  '啟德跑道公園':'九龍城','馬鞍山':'沙田','大圍':'沙田','紅磡':'九龍城',
+  '橫瀾島':'離島','北潭坳':'西貢','西貢竹角':'西貢',
+};
+/* 天文台區名 → geojson 區名 alias（天文台部分區名帶「區」字尾） */
+const DISTRICT_ALIAS = {
+  '離島區':'離島','灣仔區':'灣仔','油尖旺區':'油尖旺','深水埗區':'深水埗',
+  '九龍城區':'九龍城','黃大仙區':'黃大仙','觀塘區':'觀塘','葵青區':'葵青',
+  '荃灣區':'荃灣','屯門區':'屯門','元朗區':'元朗','北區':'北區','大埔區':'大埔',
+  '沙田區':'沙田','西貢區':'西貢','東區':'東區','南區':'南區','中西區':'中西區',
+};
+function normD(name) {
+  if (!name) return null;
+  if (DISTRICT_ALIAS[name]) return DISTRICT_ALIAS[name];
+  // strip trailing 區 if the base name exists (e.g. 離島區 → 離島)
+  if (name.endsWith('區')) {
+    const base = name.slice(0, -1);
+    if (DISTRICT_ALIAS[base] || DISTRICT_ALIAS[base + '區']) return DISTRICT_ALIAS[base + '區'] || base;
+  }
+  return name;
+}
+function temp2district(name) { return TEMP2DIST[name] || null; }
+
+const REGION_DISTRICTS = {
+  '港島及九龍': ['中西區','灣仔','東區','南區','油尖旺','深水埗','九龍城','黃大仙','觀塘'],
+  '新界東': ['沙田','大埔','北區','西貢'],
+  '新界西': ['荃灣','屯門','元朗','葵青'],
+  '離島': ['離島'],
+};
+function districtsInRegion(r) { return REGION_DISTRICTS[r] || []; }
+
+const STN2DIST = {
+  '香港天文台':'中西區','香港公園':'中西區','山頂':'中西區','上環':'中西區','中環碼頭':'中西區',
+  '灣仔':'灣仔','黃竹坑':'南區','赤柱':'南區','南朗山':'南區','鰂魚涌':'東區','筲箕灣':'東區','北角':'東區',
+  '油麻地':'油尖旺','旺角':'油尖旺','尖沙咀':'油尖旺','京士柏':'油尖旺','深水埗':'深水埗',
+  '九龍城':'九龍城','黃大仙':'黃大仙','觀塘':'觀塘','將軍澳':'觀塘','啟德跑道公園':'九龍城','紅磡':'九龍城',
+  '沙田':'沙田','大老山':'沙田','馬鞍山':'沙田','大圍':'沙田',
+  '大埔':'大埔','大美督':'大埔','打鼓嶺':'北區','上水':'北區','石崗':'元朗','天水圍':'元朗','流浮山':'元朗','元朗公園':'元朗',
+  '屯門':'屯門','大欖涌':'屯門','荃灣':'荃灣','青衣':'葵青','葵涌':'葵青','機場':'葵青','石蔭':'葵青',
+  '西貢':'西貢','滘西洲':'西貢','北潭涌':'西貢','坪洲':'離島','長洲':'離島','昂坪':'離島','大嶼山':'離島','赤鱲角':'離島','塔門':'大埔',
+};
+function stationDistrict(name) {
+  if (!name) return null;
+  if (STN2DIST[name]) return STN2DIST[name];
+  return normD(name);  // fall back to district alias (HKO sometimes returns district names directly)
+}
+
+function parseLive(raw) {
+  if (!raw) return;
+  // district-level rainfall (rhrread rainfall.data — 18 districts direct!)
+  const rmax = raw.rhrread?.rainfall?.data || [];
+  rmax.forEach(s => {
+    const d = normD(s.place);  // HKO may use 離島區 while geojson uses 離島
+    if (!d) return;
+    const v = s.max === 'M' ? 0 : +s.max;
+    liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+    liveData[d].rain = v;
+  });
+  // temperature stations -> district
+  const temps = raw.rhrread?.temperature?.data || [];
+  let tmax = null, tmin = null;
+  temps.forEach(s => {
+    const d = temp2district(s.place);
+    if (!d) return;
+    const v = +s.value;
+    liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+    liveData[d].temp = v;
+    if (tmax === null || v > tmax) tmax = v;
+    if (tmin === null || v < tmin) tmin = v;
+  });
+  // fallback: districts without a station (e.g. 灣仔 when 跑馬地 offline) get the HK average
+  const allD = (dist_geo_names || []);
+  const tempVals = Object.values(liveData).map(x => x.temp).filter(v => v !== undefined);
+  if (allD.length && tempVals.length) {
+    const avg = Math.round(tempVals.reduce((a,b)=>a+b,0) / tempVals.length);
+    allD.forEach(d => {
+      liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+      if (liveData[d].temp === undefined) { liveData[d].temp = avg; liveData[d].tempEst = true; }
+    });
+  }
+  // humidity
+  const hums = raw.rhrread?.humidity?.data || [];
+  let humSum = 0, humN = 0;
+  hums.forEach(s => {
+    const d = temp2district(s.place) || s.place;
+    const v = +s.value;
+    if (isNaN(v)) return;
+    humSum += v; humN++;
+    if (d && liveData[d]) liveData[d].hum = v;
+  });
+  // sea & soil temp (fnd)
+  const fnd = raw.fnd || {};
+  let sea = null, soil = null;
+  if (fnd.seaTemp) sea = fnd.seaTemp.value;
+  if (Array.isArray(fnd.soilTemp) && fnd.soilTemp.length) soil = fnd.soilTemp[0].value;
+  // rain max district
+  let rainMaxD = null, rainMaxV = 0;
+  Object.keys(liveData).forEach(k => {
+    if ((liveData[k].rain || 0) > rainMaxV) { rainMaxV = liveData[k].rain; rainMaxD = k; }
+  });
+  infoCache = {
+    maxTemp: tmax, minTemp: tmin,
+    hum: humN ? Math.round(humSum / humN) : null,
+    sea, soil,
+    rainMaxD, rainMaxV,
+    rainChecked: true,
+    limited: false,
+  };
+  /* 體感溫度 (apparent temperature, Australian BOM, calm wind)
+     = T + 0.33*e - 4.00,  e = (RH/100) * 6.105 * exp(17.27T/(237.7+T))
+     Per-district because temperature is per-district; humidity is city-wide. */
+  const cityHum = infoCache.hum;
+  if (cityHum) {
+    Object.keys(liveData).forEach(k => {
+      const t = liveData[k].temp;
+      if (t === undefined) return;
+      const e = (cityHum / 100) * 6.105 * Math.exp(17.27 * t / (237.7 + t));
+      liveData[k].feels = Math.round(t + 0.33 * e - 4.0);
+    });
+  }
+  const ltn = raw.rhrread?.lightning?.data || [];
+  ltn.forEach(l => {
+    if (l.occur === 'true') {
+      districtsInRegion(l.place).forEach(d => {
+        liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+        liveData[d].lightning = true;
+      });
+    }
+  });
+  const lhl = raw.lhl?.data || [];
+  lhl.forEach(row => {
+    if (row.length < 4) return;
+    const [, type, region, cnt] = row;
+    if (type !== '雲對地') return;
+    districtsInRegion(region).forEach(d => {
+      liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+      liveData[d].lhl += +cnt;
+    });
+  });
+  const w = raw.warnsum?.WTS;
+  if (w && w.code === 'WTS') WTS = w;
+}
+
+/* compact snapshot parser (from R2 timeline) */
+function parseSnapCompact(snap) {
+  if (!snap) return;
+  (snap.ltn || []).forEach(([place, occur]) => {
+    if (occur === 'true') {
+      districtsInRegion(place).forEach(d => {
+        liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+        liveData[d].lightning = true;
+      });
+    }
+  });
+  (snap.rmax || []).forEach(([d0, val]) => {
+    const d = normD(d0);
+    if (!d) return;
+    const v = val === 'M' ? 0 : +val;
+    liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+    liveData[d].rain = v;
+  });
+  (snap.rain || []).forEach(([stn, val]) => {
+    if (liveData[stn] && liveData[stn].rain) return;  // rmax already covers districts
+    const d = stationDistrict(stn);
+    if (!d) return;
+    const v = val === 'M' ? 0 : +val;
+    liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+    if (!liveData[d].rain) liveData[d].rain = v;
+  });
+  (snap.temp || []).forEach(([stn, val]) => {
+    const d = temp2district(stn);
+    if (!d) return;
+    liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+    liveData[d].temp = +val;
+  });
+  (snap.hum || []).forEach(([stn, val]) => {
+    const d = temp2district(stn) || stn;
+    if (liveData[d]) liveData[d].hum = +val;
+  });
+  (snap.lhl || []).forEach(([type, region, cnt]) => {
+    if (type !== '雲對地') return;
+    districtsInRegion(region).forEach(d => {
+      liveData[d] = liveData[d] || {rain:0, lightning:false, lhl:0};
+      liveData[d].lhl += +cnt;
+    });
+  });
+  WTS = snap.wts || null;
+  // info cache from snapshot
+  const temps = (snap.temp || []).map(([stn, v]) => +v).filter(v => !isNaN(v));
+  let tmax = temps.length ? Math.max(...temps) : null;
+  let tmin = temps.length ? Math.min(...temps) : null;
+  let sea = snap.sea ? snap.sea.value : null;
+  let soil = Array.isArray(snap.soil) && snap.soil.length ? snap.soil[0].value : null;
+  const hums = (snap.hum || []).map(([stn, v]) => +v).filter(v => !isNaN(v));
+  const raws = Object.entries(liveData).map(([k, v]) => [k, v.rain || 0]).sort((a,b) => b[1]-a[1]);
+  const hasTemp = !!(snap.temp && snap.temp.length);
+  infoCache = {
+    maxTemp: tmax, minTemp: tmin,
+    hum: hums.length ? Math.round(hums.reduce((a,b)=>a+b,0)/hums.length) : null,
+    sea, soil,
+    rainMaxD: raws.length && raws[0][1] > 0 ? raws[0][0] : null,
+    rainMaxV: raws.length ? raws[0][1] : 0,
+    rainChecked: true,
+    limited: !hasTemp,                       // old-format snapshot
+    snapTime: (snap.t || '').slice(11, 16),
+  };
+  // apparent temperature for snapshots too (needs per-district temp + city humidity)
+  if (infoCache.hum) {
+    Object.keys(liveData).forEach(k => {
+      const t = liveData[k].temp;
+      if (t === undefined) return;
+      const e = (infoCache.hum / 100) * 6.105 * Math.exp(17.27 * t / (237.7 + t));
+      liveData[k].feels = Math.round(t + 0.33 * e - 4.0);
+    });
+  }
+}
+
+/* severity color */
+function severity(d) {
+  const data = liveData[d] || {};
+  if (mode === 'feels') {
+    const f = data.feels;
+    if (f === undefined) return 'rgba(30,58,95,0.35)';
+    if (f >= 40) return 'rgba(220,38,38,0.82)';   // 酷熱
+    if (f >= 36) return 'rgba(239,68,68,0.76)';
+    if (f >= 33) return 'rgba(255,217,61,0.72)';
+    if (f >= 30) return 'rgba(255,160,80,0.68)';
+    if (f >= 27) return 'rgba(253,126,40,0.6)';
+    return 'rgba(78,168,222,0.6)';
+  }
+  if (mode === 'humidity') {
+    const h = data.hum !== undefined ? data.hum : (infoCache.hum || null);
+    if (h === null) return 'rgba(30,58,95,0.35)';
+    if (h >= 90) return 'rgba(139,92,246,0.72)';
+    if (h >= 80) return 'rgba(59,130,246,0.7)';
+    if (h >= 70) return 'rgba(34,211,238,0.68)';
+    if (h >= 60) return 'rgba(132,204,22,0.65)';
+    return 'rgba(251,191,36,0.65)';
+  }
+  if (mode === 'temp') {
+    const t = data.temp;
+    if (t === undefined) return 'rgba(30,58,95,0.35)';
+    if (t >= 32) return 'rgba(239,68,68,0.75)';
+    if (t >= 30) return 'rgba(255,217,61,0.72)';
+    if (t >= 28) return 'rgba(255,160,80,0.7)';
+    if (t >= 26) return 'rgba(253,126,40,0.62)';
+    if (t >= 24) return 'rgba(78,168,222,0.6)';
+    return 'rgba(59,130,246,0.55)';
+  }
+  if (mode === 'thunder') {
+    if (data.lightning) return 'rgba(239,68,68,0.72)';
+    if (data.lhl > 0) return 'rgba(168,85,247,0.7)';
+    if (data.rain > 50) return 'rgba(239,68,68,0.75)';
+    if (data.rain > 7.5) return 'rgba(255,217,61,0.7)';
+    if (data.rain > 2.5) return 'rgba(87,204,153,0.68)';
+    if (data.rain > 0) return 'rgba(78,168,222,0.65)';
+    return 'rgba(30,58,95,0.45)';
+  }
+  if (mode === 'rain') {
+    const r = data.rain || 0;
+    if (r > 50) return 'rgba(239,68,68,0.8)';
+    if (r > 7.5) return 'rgba(255,217,61,0.75)';
+    if (r > 2.5) return 'rgba(87,204,153,0.72)';
+    if (r > 0) return 'rgba(78,168,222,0.7)';
+    return 'rgba(30,58,95,0.45)';
+  }
+  if (data.lightning) return 'rgba(255,217,61,0.75)';
+  if (data.lhl > 5) return 'rgba(168,85,247,0.72)';
+  return 'rgba(30,58,95,0.45)';
+}
+
+/* label text follows the ACTIVE layer (not always temperature) */
+function labelText(name, data) {
+  const d = data || {};
+  if (mode === 'temp') {
+    if (d.temp !== undefined) return `${name} ${d.temp}°${d.tempEst ? '*' : ''}`;
+    // older snapshots carry rainfall only — show that instead of a useless dash
+    if (d.rain !== undefined) return `${name} ${d.rain}mm`;
+    return `${name} —`;
+  }
+  if (mode === 'rain') {
+    return `${name} ${d.rain ? d.rain + 'mm' : '0'}`;
+  }
+  if (mode === 'feels') {
+    if (d.feels !== undefined) return `${name} ${d.feels}°`;
+    if (d.rain !== undefined) return `${name} ${d.rain}mm`;
+    return `${name} —`;
+  }
+  if (mode === 'humidity') {
+    const h = d.hum !== undefined ? d.hum : (infoCache.hum || null);
+    return h ? `${name} ${h}%` : `${name} —`;
+  }
+  if (mode === 'lightning') {
+    if (d.lightning) return `${name} ⚡ 有`;
+    return d.lhl ? `${name} ${d.lhl}次` : `${name} —`;
+  }
+  // thunder composite: temperature + active alert marker
+  let s = d.temp !== undefined ? d.temp + '°' + (d.tempEst ? '*' : '') : '';
+  if (d.lightning) s += ' ⚡';
+  else if (d.rain > 0) s += ' ' + d.rain + 'mm';
+  if (!s && d.rain !== undefined) s = d.rain + 'mm';
+  return s ? `${name} ${s}` : name;
+}
+
+let currentDetail = null;
+function applyColors() {
+  districtEntities.forEach(({name, entity, labelEntity}) => {
+    entity.polygon.material = Cesium.Color.fromCssColorString(severity(name));
+    if (labelEntity) {
+      const data = liveData[name] || {};
+      const hasData = data.temp !== undefined || data.rain !== undefined || data.lightning || data.lhl;
+      labelEntity.label.text = labelText(name, data);
+      labelEntity.label.fillColor = hasData
+        ? Cesium.Color.WHITE
+        : Cesium.Color.fromCssColorString('rgba(255,255,255,0.55)');
+      // mark estimated values visually
+      labelEntity.label.font = data.tempEst
+        ? 'italic bold 12px "PingFang TC","Microsoft JhengHei",sans-serif'
+        : 'bold 12px "PingFang TC","Microsoft JhengHei",sans-serif';
+    }
+  });
+  // keep the open detail panel in sync with refreshed data
+  if (detailPanel && detailPanel.classList.contains('sheet-open') && currentDetail) {
+    showDetail(currentDetail);
+  }
+  scheduleLabelUpdate();
+}
+
+/* ========== Label collision avoidance (hide overlapping labels) ========== */
+let labelUpdateTimer = null;
+let labelUpdateScheduled = false;
+function scheduleLabelUpdate() {
+  if (labelUpdateScheduled) return;
+  labelUpdateScheduled = true;
+  clearTimeout(labelUpdateTimer);
+  labelUpdateTimer = setTimeout(() => { labelUpdateScheduled = false; updateLabelCollision(); }, 160);
+}
+function screenPos(lon, lat) {
+  const ST = Cesium.SceneTransforms;
+  const fn = ST.wgs84ToWindowCoordinates || ST.worldToWindowCoordinates;
+  try {
+    return fn.call(ST, viewer.scene, Cesium.Cartesian3.fromDegrees(lon, lat, 60));
+  } catch(e) { return null; }
+}
+function updateLabelCollision() {
+  if (!districtEntities.length) return;
+  if (!showLabels) { labelEntities.forEach(e => e.show = false); return; }
+  const items = [];
+  districtEntities.forEach(({name, labelEntity, cx, cy}) => {
+    if (!labelEntity) return;
+    const win = screenPos(cx, cy);
+    if (!win) { labelEntity.show = false; return; }
+    const d = liveData[name] || {};
+    // priority: lightning > heavy rain > extreme temp
+    let prio = 0;
+    if (d.lightning) prio += 1000;
+    if (d.lhl) prio += Math.min(d.lhl, 300) + 200;
+    if (d.rain) prio += d.rain * 8;
+    if (d.temp !== undefined) prio += Math.abs(d.temp - 26) * 3;
+    items.push({labelEntity, x: win.x, y: win.y, prio, name});
+  });
+  items.sort((a, b) => b.prio - a.prio);
+  // text width estimate: 區名 (up to 4 CJK chars) + temp ≈ 56-78px wide, 18px tall
+  const placed = [];
+  items.forEach(it => {
+    const label = it.labelEntity.label;
+    const txt = label.text ? label.text.getValue() : '';
+    const w = Math.min(96, 22 + (txt.length * 9));
+    const clash = placed.some(p =>
+      Math.abs(p.x - it.x) < (p.w + w) / 2 + 4 &&
+      Math.abs(p.y - it.y) < 19
+    );
+    it.labelEntity.show = !clash;
+    if (!clash) placed.push({x: it.x, y: it.y, w});
+  });
+}
+
+/* ========== Auto-refresh live from HKO ========== */
+async function fetchLive() {
+  const ts = Date.now();
+  const nowHK = new Date(Date.now() + 8 * 3600 * 1000);
+  const y = nowHK.getUTCFullYear(), m = nowHK.getUTCMonth() + 1, d = nowHK.getUTCDate();
+  const [rhr, warn, rain, lhl, fnd, flw, swt, srs] = await Promise.all([
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/hourlyRainfall.php?lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/opendata.php?dataType=LHL&lang=tc&rformat=json&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=fnd&lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=swt&lang=tc&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+    fetch(`https://data.weather.gov.hk/weatherAPI/opendata/opendata.php?dataType=SRS&lang=tc&rformat=json&station=HKO&year=${y}&month=${m}&day=${d}&_=${ts}`, {cache:'no-store'}).then(r=>r.json()).catch(()=>null),
+  ]);
+  return {rhrread: rhr, warnsum: warn, rainfall: rain, lhl, fnd, flw, swt, srs};
+}
+
+async function refresh() {
+  let raw;
+  try {
+    raw = await fetchLive();
+  } catch(e) {
+    try { raw = await fetch('live.json', {cache:'no-store'}).then(r=>r.json()); } catch(e2) { return; }
+  }
+  parseLive(raw);
+  setForecastSwt(raw);
+  applyColors();
+  updateHud();
+  renderInfoBar();
+}
+function updateHud() {
+  const ts = new Date().toLocaleTimeString('zh-HK',{hour:'2-digit',minute:'2-digit'});
+  const bar = document.getElementById('warnBar');
+  // badge on the forecast toggle whenever a warning is in force (mobile has no visible panel)
+  const badge = document.getElementById('tgForecastBadge');
+  if (badge) badge.style.display = WTS ? 'block' : 'none';
+  document.body.classList.toggle('has-warn', !!WTS);
+  if (WTS) {
+    bar.style.display='block';
+    bar.textContent = `⛈️ 雷暴警告 — ${WTS.actionCode==='EXTEND'?'延長':WTS.actionCode} 有效至 ${new Date(WTS.expireTime).toLocaleTimeString('zh-HK')} · 天文台`;
+    document.getElementById('hudTime').textContent = `更新 ${ts} · 🔴 雷暴警告生效中`;
+  } else {
+    bar.style.display='none';
+    document.getElementById('hudTime').textContent = `更新 ${ts} · 🟢 暫無雷暴警告`;
+  }
+}
+
+/* forecast + SWT + sun panels */
+let forecastCache = null, swtCache = null, sunCache = null;
+function renderForecast() {
+  const bar = document.getElementById('forecastBar');
+  if (!forecastCache) { bar.classList.remove('has-data'); return; }
+  bar.classList.add('has-data');
+  document.getElementById('fbPeriod').textContent = '🗓️ ' + forecastCache.period;
+  document.getElementById('fbDesc').innerHTML = '<span class="fb-label">明日：</span>' + forecastCache.desc;
+  document.getElementById('fbOutlook').textContent = '📈 ' + forecastCache.outlook;
+}
+function renderSWT() {
+  const bar = document.getElementById('swtBar');
+  if (!swtCache || !swtCache.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'block';
+  bar.textContent = '💡 特別天氣提示：' + swtCache.map(s => s.advice || '').join('；');
+}
+function setForecastSwt(raw) {
+  if (raw?.flw) {
+    forecastCache = {
+      period: raw.flw.forecastPeriod || '',
+      desc: raw.flw.forecastDesc || '',
+      outlook: raw.flw.outlook || '',
+    };
+  }
+  if (raw?.swt?.swt && Array.isArray(raw.swt.swt)) swtCache = raw.swt.swt;
+  // sunrise / sunset / day length (HKO SRS)
+  if (raw?.srs?.data && raw.srs.data.length) {
+    const row = raw.srs.data[0];   // [YYYY-MM-DD, RISE, TRANSIT, SET]
+    const rise = row[1], set = row[3];
+    sunCache = { rise, set, transit: row[2], daylen: dayLength(rise, set) };
+  }
+  renderForecast();
+  renderSWT();
+  renderSun();
+}
+/* 日照時長 = 日落 - 日出 */
+function dayLength(rise, set) {
+  if (!rise || !set) return null;
+  const [rh, rm] = rise.split(':').map(Number);
+  const [sh, sm] = set.split(':').map(Number);
+  let mins = (sh * 60 + sm) - (rh * 60 + rm);
+  if (mins < 0) mins += 1440;
+  return `${Math.floor(mins / 60)}小時${String(mins % 60).padStart(2, '0')}分`;
+}
+function renderSun() {
+  const c = sunCache || {};
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('ibSunrise', c.rise || '—');
+  set('ibSunset', c.set || '—');
+  set('ibDaylen', c.daylen || '—');
+}
+refresh();
+setInterval(refresh, 60000);
+
+/* ========== Timeline playback ========== */
+const tlSlider = document.getElementById('tlSlider');
+const tlTime = document.getElementById('tlTime');
+const tlCount = document.getElementById('tlCount');
+const tlPlay = document.getElementById('tlPlay');
+const tlLiveBtn = document.getElementById('tlLive');
+let tlSnapshots = [], tlIdx = -1, tlPlaying = false, tlTimer = null;
+
+function todayHK() { return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
+
+async function loadTimeline() {
+  try {
+    const resp = await fetch(`/api/history?date=${todayHK()}`, {cache:'no-store'});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.snaps?.length) return;
+    tlSnapshots = data.snaps;
+    tlSlider.max = tlSnapshots.length - 1;
+    const full = tlSnapshots.filter(s => s.temp && s.temp.length).length;
+    tlCount.textContent = full === tlSnapshots.length
+      ? `${tlSnapshots.length} 個快照`
+      : `${tlSnapshots.length} 個快照（${full} 個含溫度）`;
+  } catch(e) { console.warn('timeline fail', e); }
+}
+loadTimeline();
+setInterval(loadTimeline, 300000);
+
+function applySnapshot(idx) {
+  if (idx < 0 || idx >= tlSnapshots.length) return;
+  tlIdx = idx;
+  Object.keys(liveData).forEach(k => delete liveData[k]);
+  WTS = null;
+  const snap = tlSnapshots[idx];
+  parseSnapCompact(snap);
+  const hasTemp = !!(snap.temp && snap.temp.length);
+  tlTime.textContent = snap.t.slice(11, 16) + (hasTemp ? '' : ' ⚠ 僅雨量');
+  tlTime.style.color = hasTemp ? 'rgba(255,255,255,.8)' : '#ffd93d';
+  tlSlider.value = idx;
+  applyColors();
+  updateHud();
+  renderInfoBar();
+}
+
+tlSlider.addEventListener('input', () => {
+  tlLiveBtn.classList.remove('active');
+  applySnapshot(+tlSlider.value);
+});
+tlPlay.addEventListener('click', () => {
+  if (tlPlaying) {
+    tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶';
+  } else {
+    if (tlIdx < 0) applySnapshot(0);
+    tlPlaying = true;
+    tlLiveBtn.classList.remove('active');
+    tlPlay.textContent = '⏸';
+    tlTimer = setInterval(() => {
+      if (tlIdx < tlSnapshots.length - 1) applySnapshot(tlIdx + 1);
+      else { tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶'; }
+    }, 800);
+  }
+});
+tlLiveBtn.addEventListener('click', () => {
+  tlLiveBtn.classList.add('active');
+  if (tlPlaying) { tlPlaying = false; clearInterval(tlTimer); tlPlay.textContent = '▶'; }
+  Object.keys(liveData).forEach(k => delete liveData[k]);
+  WTS = null;
+  tlTime.textContent = '—';
+  tlTime.style.color = 'rgba(255,255,255,.8)';
+  refresh();
+});
+
+/* ========== Layer menu (Windy-style) ========== */
+const LAYER_LEGEND = {
+  thunder:   {title:'雷暴綜合', show:'rain', lightning:true,  note:'📏 固定絕對刻度 · 可跨時間比較'},
+  rain:      {title:'雨量分級 (mm)', show:'rain', lightning:false, note:'📏 固定絕對刻度 · 可跨時間比較'},
+  temp:      {title:'溫度分級 (°C)', show:'temp', lightning:false, note:'📏 固定絕對刻度 · 可跨時間比較'},
+  feels:     {title:'體感溫度 (°C)', show:'feels', lightning:false, note:'🌡 由分區溫度＋全港濕度計算（澳洲 BOM 體感公式）'},
+  humidity:  {title:'濕度分級 (%)', show:'hum', lightning:false,  note:'⚠️ 僅天文台單一測站，全港同值'},
+  lightning: {title:'閃電活動', show:'none', lightning:true,      note:'⚡ 天文台閃電定位網絡（5 分鐘更新）'},
+};
+function applyLegend(m) {
+  const lg = LAYER_LEGEND[m] || LAYER_LEGEND.rain;
+  document.getElementById('legTitle').textContent = lg.title;
+  document.getElementById('legRain').style.display = lg.show === 'rain' ? 'block' : 'none';
+  document.getElementById('legTemp').style.display = lg.show === 'temp' ? 'block' : 'none';
+  document.getElementById('legFeels').style.display = lg.show === 'feels' ? 'block' : 'none';
+  document.getElementById('legHum').style.display  = lg.show === 'hum' ? 'block' : 'none';
+  document.getElementById('legLightning').style.display = lg.lightning ? 'block' : 'none';
+  document.getElementById('legScaleNote').textContent = lg.note;
+}
+document.querySelectorAll('.layer-item').forEach(item => {
+  item.addEventListener('click', () => {
+    // 標籤 toggle button is separate from layer modes
+    if (item.id === 'btnLabels') {
+      showLabels = !showLabels;
+      item.classList.toggle('active', showLabels);
+      if (!showLabels) labelEntities.forEach(e => e.show = false);
+      else scheduleLabelUpdate();
+      return;
+    }
+    // 日夜日照 toggle (Cesium globe lighting = day/night terminator)
+    if (item.id === 'btnSun') {
+      sunOn = !sunOn;
+      item.classList.toggle('active', sunOn);
+      viewer.scene.globe.enableLighting = sunOn;
+      viewer.scene.globe.dynamicAtmosphereLighting = sunOn;
+      viewer.scene.globe.dynamicAtmosphereLightingFromSun = sunOn;
+      // keep the clock at real time so the terminator matches the actual sun position
+      viewer.clock.currentTime = Cesium.JulianDate.now();
+      viewer.scene.requestRender();
+      return;
+    }
+    document.querySelectorAll('.layer-item').forEach(x => { if (x.id !== 'btnLabels' && x.id !== 'btnSun') x.classList.remove('active'); });
+    item.classList.add('active');
+    mode = item.dataset.mode;
+    applyLegend(mode);
+    applyColors();
+  });
+});
+
+/* ========== Info bar ========== */
+function tempBadge(t) {
+  if (t === null || t === undefined) return '';
+  if (t >= 32) return '<span class="dp-badge dp-hot">炎熱</span>';
+  if (t >= 29) return '<span class="dp-badge dp-warm">偏暖</span>';
+  if (t >= 25) return '<span class="dp-badge dp-ok">舒適</span>';
+  return '<span class="dp-badge dp-cool">清涼</span>';
+}
+function humBadge(h) {
+  if (!h) return '';
+  if (h >= 85) return '<span class="dp-badge dp-cool">很潮濕</span>';
+  if (h >= 70) return '<span class="dp-badge dp-ok">潮濕</span>';
+  return '<span class="dp-badge dp-warm">乾爽</span>';
+}
+function renderInfoBar() {
+  const c = infoCache || {};
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  const limited = c.limited === true;   // snapshot predates the temperature upgrade
+  set('ibMaxTemp', c.maxTemp !== null && c.maxTemp !== undefined ? c.maxTemp + '°C' : '—');
+  set('ibMinTemp', c.minTemp !== null && c.minTemp !== undefined ? c.minTemp + '°C' : '—');
+  set('ibHum', c.hum ? c.hum + '%' : '—');
+  set('ibSea', c.sea ? c.sea + '°C' : '—');
+  set('ibSoil', c.soil ? c.soil + '°C' : '—');
+  // rainfall: be explicit when the whole territory is dry instead of a bare dash
+  if (c.rainMaxD) set('ibRain', `${c.rainMaxD} ${c.rainMaxV}mm`);
+  else set('ibRain', c.rainChecked ? '全港無雨' : '—');
+  // explain an empty panel instead of leaving the user guessing
+  const noteEl = document.getElementById('ibNote');
+  if (noteEl) {
+    if (limited) {
+      noteEl.style.display = 'block';
+      noteEl.textContent = '⚠️ 此快照（' + (c.snapTime || '') + '）只含雨量及閃電資料，未包括溫度／海溫／土壤溫';
+    } else {
+      noteEl.style.display = 'none';
+    }
+  }
+  // grey out rows that have no value in a limited snapshot
+  ['ibMaxTemp','ibMinTemp','ibHum','ibSea','ibSoil'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.color = (limited && el.textContent === '—') ? 'rgba(255,255,255,.3)' : '';
+  });
+}
+
+/* ========== District detail panel (click) ========== */
+const detailPanel = document.getElementById('detailPanel');
+document.getElementById('dpClose').addEventListener('click', () => {
+  detailPanel.classList.remove('sheet-open');
+});
+
+function showDetail(name) {
+  currentDetail = name;
+  const data = liveData[name] || {};
+  const rows = [];
+  if (data.temp !== undefined)
+    rows.push(['🌡 溫度', data.temp + '°C' + (data.tempEst ? ' *' : '') + tempBadge(data.temp)]);
+  if (data.feels !== undefined)
+    rows.push(['🥵 體感', data.feels + '°C' + tempBadge(data.feels)]);
+  if (data.hum)
+    rows.push(['💧 濕度', data.hum + '%' + humBadge(data.hum)]);
+  rows.push(['🌧 雨量 (1h)', data.rain ? data.rain + ' mm' : '0 mm']);
+  rows.push(['⚡ 閃電', data.lightning ? '區內有閃電' : (data.lhl ? data.lhl + ' 次' : '無')]);
+  if (WTS) rows.push(['⛈ 雷暴警告', '<span style="color:#ffd93d">生效中</span>']);
+  const c = infoCache || {};
+  if (mode === 'temp' && c.maxTemp !== null) rows.push(['📊 全港對比', `最高 ${c.maxTemp}° / 最低 ${c.minTemp}°`]);
+  document.getElementById('dpName').textContent = '📍 ' + name;
+  document.getElementById('dpBody').innerHTML = rows
+    .map(([k, v]) => `<div class="dp-row"><span class="dp-k">${k}</span><span class="dp-v">${v}</span></div>`)
+    .join('');
+  closeAllSheets('detailPanel');
+  detailPanel.classList.add('sheet-open');
+}
+
+/* ========== District hover tooltip + click ========== */
+const tooltip3d = document.getElementById('tooltip3d');
+const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction(movement => {
+  const picked = viewer.scene.pick(movement.endPosition);
+  if (Cesium.defined(picked) && picked.id && picked.id.polygon) {
+    const name = picked.id._wxName;
+    if (!name) return;
+    const data = liveData[name] || {};
+    document.getElementById('tt3dName').textContent = '📍 ' + name;
+    document.getElementById('tt3dContent').innerHTML =
+      `<div class="tt-row"><span class="tt-label">溫度</span><span class="tt-val">${data.temp !== undefined ? data.temp + '°C' : '—'}</span></div>` +
+      `<div class="tt-row"><span class="tt-label">濕度</span><span class="tt-val">${data.hum ? data.hum + '%' : '—'}</span></div>` +
+      `<div class="tt-row"><span class="tt-label">雨量</span><span class="tt-val">${data.rain ? data.rain + ' mm' : '—'}</span></div>` +
+      `<div class="tt-row"><span class="tt-label">閃電</span><span class="tt-val">${data.lightning ? '⚡ 是' : (data.lhl ? data.lhl + ' 次' : '—')}</span></div>` +
+      `<div class="tt-row" style="color:rgba(255,255,255,.35)"><span class="tt-label">點擊看詳情</span></div>`;
+    tooltip3d.style.display = 'block';
+    tooltip3d.style.left = (movement.endPosition.x + 14) + 'px';
+    tooltip3d.style.top = (movement.endPosition.y - 10) + 'px';
+    viewer.scene.canvas.style.cursor = 'pointer';
+  } else {
+    tooltip3d.style.display = 'none';
+    viewer.scene.canvas.style.cursor = 'default';
+  }
+}, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+handler.setInputAction(click => {
+  const picked = viewer.scene.pick(click.position);
+  if (Cesium.defined(picked) && picked.id && picked.id.polygon) {
+    const name = picked.id._wxName;
+    if (name) showDetail(name);
+  } else {
+    detailPanel.classList.remove('sheet-open');
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+/* ========== Mobile sheets: panels open on demand ========== */
+const SHEETS = { tgInfo: 'infoBar', tgForecast: 'forecastBar', tgLegend: 'legendBox' };
+function closeAllSheets(except) {
+  Object.values(SHEETS).forEach(id => {
+    if (id === except) return;
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('sheet-open');
+  });
+  Object.keys(SHEETS).forEach(tid => {
+    if (SHEETS[tid] === except) return;
+    const b = document.getElementById(tid);
+    if (b) b.classList.remove('active');
+  });
+  if (except !== 'detailPanel') detailPanel.classList.remove('sheet-open');
+}
+function toggleSheet(tid) {
+  const pid = SHEETS[tid];
+  const el = document.getElementById(pid);
+  if (!el) return;
+  const wasOpen = el.classList.contains('sheet-open');
+  closeAllSheets(null);
+  if (!wasOpen) {
+    el.classList.add('sheet-open');
+    const b = document.getElementById(tid);
+    if (b) b.classList.add('active');
+  }
+}
+Object.keys(SHEETS).forEach(tid => {
+  const b = document.getElementById(tid);
+  if (b) b.addEventListener('click', () => toggleSheet(tid));
+});
+document.querySelectorAll('.sheet-close').forEach(btn => {
+  btn.addEventListener('click', () => closeAllSheets(null));
+});
+
+/* ========== Label refresh on camera move ========== */
+viewer.camera.moveEnd.addEventListener(scheduleLabelUpdate);
+viewer.camera.changed.addEventListener(scheduleLabelUpdate);
+
+/* ========== Keyboard shortcuts ========== */
+document.addEventListener('keydown', e => {
+  const keys = {'1':'thunder','2':'rain','3':'temp','4':'feels','5':'lightning'};
+  if (keys[e.key]) {
+    const btn = document.querySelector(`.layer-item[data-mode="${keys[e.key]}"]`);
+    if (btn) btn.click();
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    document.getElementById('tlPlay').click();
+  } else if (e.key === 'l' || e.key === 'L') {
+    document.getElementById('btnLabels').click();
+  } else if (e.key === 'd' || e.key === 'D') {
+    document.getElementById('btnSun').click();
+  } else if (e.key === 'Escape') {
+    closeAllSheets(null);
+  }
+});
+
+/* initial info bar render */
+renderInfoBar();
+</script>
+</body>
+</html>

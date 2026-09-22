@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.db
+*.log
+.env
+node_modules/
+secrets/
+.wrangler/
+dist/
+live.json
