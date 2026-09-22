@@ -7,8 +7,6 @@ import json, os, sys, time, boto3, urllib.request
 from datetime import datetime, timedelta
 
 HKO = "https://data.weather.gov.hk/weatherAPI/opendata"
-RETENTION_DAYS = 7          # snapshots older than this date prefix are purged
-QUIET = "--quiet" in sys.argv
 
 def fetch_json(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -39,10 +37,6 @@ def main():
         snap["lhl"] = json.loads(fetch(f"{HKO}/opendata.php?dataType=LHL&lang=tc&rformat=json&_={ts}"))
     except Exception as e:
         snap["lhl"] = None; print(f"lhl fail: {e}", file=sys.stderr)
-    try:
-        snap["fnd"] = fetch_json(f"{HKO}/weather.php?dataType=fnd&lang=tc&_={ts}")
-    except Exception as e:
-        snap["fnd"] = None; print(f"fnd fail: {e}", file=sys.stderr)
 
     # compact: keep only what the map needs
     compact = {
@@ -50,12 +44,7 @@ def main():
         "ltn": [(l.get("place"), l.get("occur")) for l in (snap["rhr"] or {}).get("lightning", {}).get("data", [])],
         "wts": (snap["warn"] or {}).get("WTS"),
         "rain": [(s.get("automaticWeatherStation"), s.get("value")) for s in (snap["rain"] or {}).get("hourlyRainfall", [])],
-        "rmax": [(s.get("place"), s.get("max")) for s in (snap["rhr"] or {}).get("rainfall", {}).get("data", [])],
-        "temp": [(s.get("place"), s.get("value")) for s in (snap["rhr"] or {}).get("temperature", {}).get("data", [])],
-        "hum": [(s.get("place"), s.get("value")) for s in (snap["rhr"] or {}).get("humidity", {}).get("data", [])],
         "lhl": [[r[1], r[2], r[3]] for r in ((snap["lhl"] or {}).get("data") or [])],
-        "sea": (snap["fnd"] or {}).get("seaTemp"),
-        "soil": (snap["fnd"] or {}).get("soilTemp"),
     }
     body = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
 
@@ -65,11 +54,10 @@ def main():
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"])
     key = f"snapshots/{now.strftime('%Y-%m-%d')}/{now.strftime('%H-%M')}.json"
     s3.put_object(Bucket="wx-thunder", Key=key, Body=body, ContentType="application/json")
-    if not QUIET:
-        print(f"OK {key} {len(body)}B")
+    print(f"OK {key} {len(body)}B")
 
-    # retention: delete date prefixes older than RETENTION_DAYS
-    cutoff = (now - timedelta(days=RETENTION_DAYS)).strftime("%Y-%m-%d")
+    # retention: delete prefixes older than 7 days
+    cutoff = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     for prefix in _list_prefixes(s3):
         if prefix < cutoff:
             _delete_prefix(s3, prefix)
@@ -92,9 +80,4 @@ def _delete_prefix(s3, prefix):
         marker = keys[-1] if keys else None
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        # non-zero exit so the cron wrapper's `|| echo FAIL` actually fires
-        print(f"wx-thunder snapshot FAILED: {e}", file=sys.stderr)
-        sys.exit(1)
+    main()

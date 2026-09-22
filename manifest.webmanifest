@@ -1,0 +1,22 @@
+{
+  "name": "香港天氣 3D · Hong Kong Weather 3D",
+  "short_name": "香港天氣 3D",
+  "description": "香港即時天氣 3D 地圖：18 區氣溫、體感溫度、雨量、閃電，附 7 日歷史時間軸回放。資料來源：香港天文台開放數據。",
+  "lang": "zh-Hant",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080c16",
+  "theme_color": "#080c16",
+  "orientation": "any",
+  "categories": ["weather", "utilities"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "即時天氣", "url": "/?tab=now" },
+    { "name": "歷史回放", "url": "/?tab=timeline" }
+  ]
+}

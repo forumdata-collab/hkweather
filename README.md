@@ -15,15 +15,38 @@
 |---|---|
 | 3D 香港地圖 | CSDI 地政總署 3D Visualisation Map (Cesium 3D Tiles) for real buildings/terrain; ArcGIS World Imagery as the regional basemap |
 | 18 行政區色層 | Real Administrative District Boundary polygons, drawn as Cesium entities and re-coloured per layer |
-| 圖層選單 (Windy 風格) | Right-hand vertical menu: 雷暴綜合 / 雨量 / 溫度 / 體感溫度 / 閃電 |
+| 圖層切換 | Segmented control: 雨量 / 溫度 / 體感 / 閃電 / **雷暴綜合** (desktop = right rail, mobile = horizontal scroll bar) |
 | 區名 + 數值標籤 | Every district shows its name plus the **active layer's** value (`28°`, `12mm`, `71%`, `⚡`), with screen-space **collision avoidance** |
 | 時間軸回放 | R2-stored 5-minute snapshots, scrub or play back; each snapshot restores the full district state |
 | 體感溫度 | Australian BOM apparent temperature `AT = T + 0.33e − 4.00`, computed per district from district temperature + city humidity |
 | 日出 / 日落 / 日照 | HKO `SRS` API, shown per day in the overview panel |
 | 日夜日照 | `globe.enableLighting` + `dynamicAtmosphereLighting` with the real sun position (day/night terminator) |
-| 手機優先 UI | Below 860 px all panels collapse into on-demand bottom sheets opened from three trigger buttons |
-| 鍵盤操作 | `1-5` layers · `Space` play/pause · `L` labels · `D` day/night · `Esc` close sheets |
-| 自動更新 | Live data refetched from HKO every 60 s; snapshot timeline refreshed every 5 min |
+| 手機優先 UI | Below 860 px: five-tab bottom nav (地圖／即時／時間軸／警告／更多) + **draggable** bottom sheets; the map keeps ~65–75 % of the viewport |
+| 鍵盤操作 | `1-5` layers · `Space` play/pause · `L` live · `R` replay last 60 min · `G` legend · `Esc` close |
+| 自動更新 | Live data refetched from HKO every 60 s; snapshot timeline every 5 min (both paused while the tab is hidden) |
+| 天氣狀況摘要 | Natural-language line generated **only** from received values (警告 / 雨區 / 閃電 / 悶熱 / 穩定) |
+| 18 區列表與對比 | Sortable per-metric ranking of the 18 districts + factual extremes (最高／最低氣溫、最多雨量、閃電區域) — no scoring, no invented values |
+| 雨區移動 | Storm track built from the snapshot window: where the strongest rain was 60 / 30 min ago vs now |
+| 資料時間戳 | Every dataset carries its own observation time (氣溫 22:00 · 雨量 21:45 · 閃電 …) instead of one shared timestamp |
+| 資料來源與限制 | In-app methodology panel: HKO endpoints, update cadence, the feels-like formula, single-station humidity caveat, 4-region lightning caveat |
+| 錯誤與離線 | Per-source status list + retry; when HKO is unreachable the last known values are shown and labelled「最後可用資料（HH:MM）」 |
+| PWA | Installable — manifest + service worker (network-first shell, cached fallback), app icons |
+
+## 🏗 Architecture
+
+The presentation was split from the data/3D layer so UI work cannot break ingestion:
+
+| File | Responsibility |
+|---|---|
+| `index.html` | Shell markup: HUD, layer switcher, timeline, stat bar, bottom nav, sheets |
+| `core.js` | **Data + 3D map layer** — Cesium viewer, CSDI 3D Tiles (zoom-gated), 18-district entities, HKO parsing, feels-like, snapshot timeline, label collision. Emits a `wx:live` event with the raw payload |
+| `v2.js` | **UI layer** — HUD, per-dataset timestamps, natural-language status, layer switcher, 18-district list/comparison, storm track, sheets + bottom nav, methodology, offline fallback |
+| `styles.css` | All styling, mobile breakpoint at 860 px |
+| `sw.js` + `manifest.webmanifest` | PWA shell |
+| `functions/api/history.js` | R2 timeline API (rotating edge cache + batched reads) |
+| `tools/snapshot.py` | 5-minute R2 snapshot cron (7-day retention) |
+
+`v2.js` overrides the presentation functions `core.js` calls (`updateHud`, `updateTlCount`, `renderInfoBar`, `showDetail`) and must not redeclare the data-layer globals.
 
 ## 📡 Data sources
 
